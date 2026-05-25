@@ -6,5 +6,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      HEALTHCHECK_MAX_POLL_LAG_SECONDS: 240
     volumes:
       - ./data:/app/data

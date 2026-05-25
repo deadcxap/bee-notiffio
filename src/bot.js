@@ -168,6 +168,8 @@ let pollInProgress = false;
 
 client.once(Events.ClientReady, async (readyClient) => {
   await storage.load();
+  storage.setRuntimeStatus({ startedAt: new Date().toISOString() });
+  await storage.save();
   console.log(`Logged in as ${readyClient.user.tag}.`);
   console.log(`Polling Twitch every ${config.pollIntervalMs / 1000} seconds.`);
   void pollTwitch();
@@ -438,6 +440,11 @@ async function pollTwitch() {
   pollInProgress = true;
 
   try {
+    storage.setRuntimeStatus({
+      lastPollStartedAt: new Date().toISOString(),
+      lastPollError: null
+    });
+
     const subscriptions = storage.allSubscriptions();
     const streamsByLogin = await twitch.getStreamsByLogins(
       subscriptions.map((subscription) => subscription.twitchLogin)
@@ -491,8 +498,17 @@ async function pollTwitch() {
       });
     }
 
+    storage.setRuntimeStatus({
+      lastPollSucceededAt: new Date().toISOString(),
+      lastPollError: null
+    });
     await storage.save();
   } catch (error) {
+    storage.setRuntimeStatus({
+      lastPollFailedAt: new Date().toISOString(),
+      lastPollError: error?.message || String(error)
+    });
+    await storage.save();
     console.error('Polling failed:', error);
   } finally {
     pollInProgress = false;

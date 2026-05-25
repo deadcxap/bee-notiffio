@@ -3,7 +3,8 @@ import { dirname } from 'node:path';
 import { defaultLanguage, defaultTemplate, defaultTemplates } from './commands.js';
 
 const emptyData = {
-  guilds: {}
+  guilds: {},
+  runtime: createEmptyRuntime()
 };
 
 export class JsonStorage {
@@ -32,6 +33,16 @@ export class JsonStorage {
       await rename(tempPath, this.filePath);
     });
     return this.writeQueue;
+  }
+
+  setRuntimeStatus(patch) {
+    this.data.runtime ??= createEmptyRuntime();
+    Object.assign(this.data.runtime, patch);
+  }
+
+  getRuntimeStatus() {
+    this.data.runtime ??= createEmptyRuntime();
+    return this.data.runtime;
   }
 
   getGuild(guildId) {
@@ -138,6 +149,7 @@ export class JsonStorage {
 function normalize(raw) {
   const data = raw && typeof raw === 'object' ? raw : structuredClone(emptyData);
   if (!data.guilds || typeof data.guilds !== 'object') data.guilds = {};
+  data.runtime = normalizeRuntime(data.runtime);
 
   for (const guild of Object.values(data.guilds)) {
     guild.language = normalizeLanguage(guild.language);
@@ -185,6 +197,16 @@ function normalizeStats(stats) {
   };
 }
 
+function normalizeRuntime(runtime) {
+  return {
+    startedAt: runtime?.startedAt || null,
+    lastPollStartedAt: runtime?.lastPollStartedAt || null,
+    lastPollSucceededAt: runtime?.lastPollSucceededAt || null,
+    lastPollFailedAt: runtime?.lastPollFailedAt || null,
+    lastPollError: runtime?.lastPollError || null
+  };
+}
+
 function createEmptyStats() {
   return {
     totalNotifications: 0,
@@ -193,3 +215,14 @@ function createEmptyStats() {
     lastNotificationAt: null
   };
 }
+
+function createEmptyRuntime() {
+  return {
+    startedAt: null,
+    lastPollStartedAt: null,
+    lastPollSucceededAt: null,
+    lastPollFailedAt: null,
+    lastPollError: null
+  };
+}
+
