@@ -2,7 +2,7 @@ services:
   notiffio:
     container_name: notiffio
     hostname: notiffio
-    image: ghcr.io/deadcxap/bee-notiffio:1
+    image: ghcr.io/deadcxap/bee-notiffio:dev
     restart: unless-stopped
     env_file:
       - .env
