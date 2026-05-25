@@ -1,0 +1,18 @@
+{
+  "name": "notiffio-local",
+  "version": "1.0.0",
+  "description": "Discord bot that sends Twitch live notifications to subscribed channels.",
+  "type": "module",
+  "main": "src/bot.js",
+  "scripts": {
+    "start": "node src/bot.js",
+    "deploy-commands": "node src/deploy-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.5.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
