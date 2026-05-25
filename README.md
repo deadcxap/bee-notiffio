@@ -150,6 +150,24 @@ docker compose logs -f notiffio
 
 `docker-compose.yml` монтирует локальную папку `./data` в контейнер (`/app/data`), поэтому подписки и статистика сохраняются между перезапусками.
 
+## Мониторинг и healthcheck контейнера
+
+Сервис теперь публикует runtime-статус в `data/bot-data.json` (поля `runtime.lastPollStartedAt`, `runtime.lastPollSucceededAt`, `runtime.lastPollFailedAt`, `runtime.lastPollError`).
+
+В Docker-образ добавлен `HEALTHCHECK`, который проверяет:
+- что был хотя бы один успешный polling Twitch;
+- что с момента последнего успешного polling прошло не больше порога `HEALTHCHECK_MAX_POLL_LAG_SECONDS`;
+- что последняя попытка polling не завершилась ошибкой после последнего успеха.
+
+Проверка статуса:
+
+```bash
+docker inspect --format='{{.State.Health.Status}}' notiffio
+docker inspect --format='{{json .State.Health.Log}}' notiffio | jq
+```
+
+По умолчанию в compose установлен порог `HEALTHCHECK_MAX_POLL_LAG_SECONDS=240` (4 минуты).
+
 ## CI/CD контейнера (GitHub Actions)
 
 В репозитории добавлен workflow `.github/workflows/docker-image.yml`, который:
