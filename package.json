@@ -1,6 +1,6 @@
 {
   "name": "bee-notiffio",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Discord bot that sends Twitch live notifications to subscribed channels.",
   "type": "module",
   "main": "src/bot.js",
