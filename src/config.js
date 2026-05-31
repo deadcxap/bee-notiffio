@@ -18,6 +18,12 @@ function numberEnv(name, fallback) {
   return parsed;
 }
 
+function booleanEnv(name, fallback = false) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase());
+}
+
 export const config = {
   discordToken: requireEnv('DISCORD_TOKEN'),
   discordClientId: requireEnv('DISCORD_CLIENT_ID'),
@@ -25,5 +31,6 @@ export const config = {
   twitchClientId: requireEnv('TWITCH_CLIENT_ID'),
   twitchClientSecret: requireEnv('TWITCH_CLIENT_SECRET'),
   pollIntervalMs: numberEnv('POLL_INTERVAL_SECONDS', 60) * 1000,
+  skipInitialPoll: booleanEnv('SKIP_INITIAL_POLL'),
   dataFile: process.env.DATA_FILE?.trim() || './data/bot-data.json'
 };

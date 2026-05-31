@@ -1,5 +1,6 @@
 import {
   Client,
+  EmbedBuilder,
   Events,
   GatewayIntentBits,
   PermissionsBitField
@@ -8,6 +9,8 @@ import { config } from './config.js';
 import { defaultLanguage, defaultTemplate, defaultTemplates } from './commands.js';
 import { JsonStorage } from './storage.js';
 import { TwitchApi } from './twitch.js';
+
+const RESTART_SUPPRESS_MS = 10 * 60 * 1000;
 
 const messages = {
   ru: {
@@ -27,6 +30,14 @@ const messages = {
     subscriptionTemplateUpdated: 'Шаблон подписки обновлен.',
     subscriptionTemplateReset: 'Шаблон подписки сброшен. Теперь используется серверный шаблон.',
     subscriptionForTemplateMissing: 'Подписка для такого стримера и канала не найдена.',
+    editNoChanges: 'Не указано, что изменить.',
+    editUpdated: 'Подписка обновлена.',
+    styleCurrent: (mode) => `Текущий стиль уведомлений: ${mode}.`,
+    styleUpdated: (mode) => `Стиль уведомлений обновлен: ${mode}.`,
+    embedCategory: 'Категория',
+    embedViewers: 'Зрители',
+    embedStartedAt: 'Начало',
+    embedWatch: 'Смотреть на Twitch',
     languageCurrent: (language) => `Текущий язык: ${language}.`,
     languageUpdated: (language) => `Язык сервера обновлен: ${language}.`,
     statsEmpty: 'Статистика пока пустая: бот еще не отправлял уведомления на этом сервере.',
@@ -40,8 +51,8 @@ const messages = {
     testTitle: 'Тестовое уведомление',
     testCategory: 'Тестовая категория',
     never: 'никогда',
-    onlyCategory: (category) => `, только категория: ${category}`,
-    exceptCategory: (category) => `, кроме категории: ${category}`,
+    onlyCategory: (category) => `, только категории: ${category}`,
+    exceptCategory: (category) => `, кроме категорий: ${category}`,
     noTitle: 'Без названия',
     noCategory: 'Без категории',
     noChannelAccess: 'У меня нет доступа к этому каналу. Дайте боту права View Channel и Send Messages или выберите другой канал в параметре discord_channel.',
@@ -55,10 +66,16 @@ const messages = {
       '**Подписки**',
       '`/twitch-subscribe streamer:<логин>` - подписать текущий канал на все стримы выбранного Twitch-канала.',
       '`/twitch-subscribe streamer:<логин> discord_channel:#канал` - подписать не текущий, а выбранный Discord-канал.',
-      '`/twitch-subscribe streamer:<логин> category:<игра>` - уведомлять только когда стрим идет в указанной категории, например `Beat Saber`.',
-      '`/twitch-subscribe streamer:<логин> exclude_category:<игра>` - уведомлять по всем категориям, кроме указанной. Удобно для схемы “Beat Saber в один канал, все остальное в другой”.',
+      '`/twitch-subscribe streamer:<логин> category:<игры>` - уведомлять только когда стрим идет в одной из указанных категорий, например `Beat Saber, Synth Riders`.',
+      '`/twitch-subscribe streamer:<логин> exclude_category:<игры>` - уведомлять по всем категориям, кроме указанных через запятую. Удобно для схемы “VR-ритм игры в один канал, все остальное в другой”.',
       '`/twitch-unsubscribe streamer:<логин>` - удалить подписку из текущего канала.',
       '`/twitch-unsubscribe streamer:<логин> discord_channel:#канал` - удалить подписку из выбранного канала.',
+      '`/twitch-edit streamer:<логин>` - изменить существующую подписку в текущем канале.',
+      '`/twitch-edit streamer:<логин> category:<игры>` - заменить список разрешенных категорий.',
+      '`/twitch-edit streamer:<логин> exclude_category:<игры>` - заменить список исключенных категорий.',
+      '`/twitch-edit streamer:<логин> clear_filters:true` - убрать все фильтры категорий.',
+      '`/twitch-edit streamer:<логин> new_discord_channel:#канал` - перенести подписку в другой канал.',
+      '`/twitch-edit streamer:<логин> notification_mode:<text|embed|both>` - задать стиль только для этой подписки.',
       '`/twitch-list` - показать все подписки сервера, их каналы, фильтры категорий и наличие личного шаблона.',
       '',
       '**Кастомизация уведомлений**',
@@ -70,7 +87,12 @@ const messages = {
       '`/twitch-message reset streamer:<логин>` - удалить личный шаблон подписки, после этого снова используется серверный.',
       '`/twitch-message ... discord_channel:#канал` - добавить, если нужная подписка находится не в текущем канале.',
       'Плейсхолдеры для шаблонов: `{streamer}`, `{title}`, `{game}`, `{url}`, `{viewers}`, `{started_at}`, `{channel}`.',
+      'Для переноса строки используйте `\\n`, например: `@everyone {streamer}\\n{title}\\n{url}`.',
       'Пример: `@everyone {streamer} играет в {game}: {title} {url}`.',
+      '`/twitch-style show` - показать стиль уведомлений сервера.',
+      '`/twitch-style set notification_mode:text` - только текстовый шаблон.',
+      '`/twitch-style set notification_mode:embed` - только красивая embed-карточка.',
+      '`/twitch-style set notification_mode:both` - два сообщения: текстовый шаблон и embed-карточка.',
       '',
       '**Тест и настройки**',
       '`/twitch-test streamer:<логин>` - отправить тестовое уведомление. Если в этом канале есть подписка на стримера, будет использован ее личный шаблон или серверный шаблон.',
@@ -98,6 +120,14 @@ const messages = {
     subscriptionTemplateUpdated: 'Subscription template updated.',
     subscriptionTemplateReset: 'Subscription template reset. The server template is now used.',
     subscriptionForTemplateMissing: 'No subscription found for that streamer and channel.',
+    editNoChanges: 'No changes were provided.',
+    editUpdated: 'Subscription updated.',
+    styleCurrent: (mode) => `Current notification style: ${mode}.`,
+    styleUpdated: (mode) => `Notification style updated: ${mode}.`,
+    embedCategory: 'Category',
+    embedViewers: 'Viewers',
+    embedStartedAt: 'Started',
+    embedWatch: 'Watch on Twitch',
     languageCurrent: (language) => `Current language: ${language}.`,
     languageUpdated: (language) => `Server language updated: ${language}.`,
     statsEmpty: 'Stats are empty: the bot has not sent notifications on this server yet.',
@@ -111,8 +141,8 @@ const messages = {
     testTitle: 'Test notification',
     testCategory: 'Test category',
     never: 'never',
-    onlyCategory: (category) => `, only category: ${category}`,
-    exceptCategory: (category) => `, except category: ${category}`,
+    onlyCategory: (category) => `, only categories: ${category}`,
+    exceptCategory: (category) => `, except categories: ${category}`,
     noTitle: 'Untitled stream',
     noCategory: 'No category',
     noChannelAccess: 'I do not have access to this channel. Give the bot View Channel and Send Messages permissions or choose another channel with discord_channel.',
@@ -126,10 +156,16 @@ const messages = {
       '**Subscriptions**',
       '`/twitch-subscribe streamer:<login>` - subscribe the current channel to all streams from a Twitch channel.',
       '`/twitch-subscribe streamer:<login> discord_channel:#channel` - subscribe a selected Discord channel instead of the current one.',
-      '`/twitch-subscribe streamer:<login> category:<game>` - notify only when the stream is in that category, for example `Beat Saber`.',
-      '`/twitch-subscribe streamer:<login> exclude_category:<game>` - notify for all categories except that one. Useful for “Beat Saber in one channel, everything else in another”.',
+      '`/twitch-subscribe streamer:<login> category:<games>` - notify only when the stream is in one of these comma-separated categories, for example `Beat Saber, Synth Riders`.',
+      '`/twitch-subscribe streamer:<login> exclude_category:<games>` - notify for all categories except the comma-separated ones. Useful for “VR rhythm games in one channel, everything else in another”.',
       '`/twitch-unsubscribe streamer:<login>` - remove a subscription from the current channel.',
       '`/twitch-unsubscribe streamer:<login> discord_channel:#channel` - remove a subscription from the selected channel.',
+      '`/twitch-edit streamer:<login>` - edit an existing subscription in the current channel.',
+      '`/twitch-edit streamer:<login> category:<games>` - replace the allowed category list.',
+      '`/twitch-edit streamer:<login> exclude_category:<games>` - replace the excluded category list.',
+      '`/twitch-edit streamer:<login> clear_filters:true` - remove category filters.',
+      '`/twitch-edit streamer:<login> new_discord_channel:#channel` - move the subscription to another channel.',
+      '`/twitch-edit streamer:<login> notification_mode:<text|embed|both>` - set style only for this subscription.',
       '`/twitch-list` - show server subscriptions, channels, category filters, and whether a custom template is set.',
       '',
       '**Notification Customization**',
@@ -141,7 +177,12 @@ const messages = {
       '`/twitch-message reset streamer:<login>` - remove the subscription template, falling back to the server template.',
       '`/twitch-message ... discord_channel:#channel` - add this when the target subscription is in another channel.',
       'Template placeholders: `{streamer}`, `{title}`, `{game}`, `{url}`, `{viewers}`, `{started_at}`, `{channel}`.',
+      'Use `\\n` for line breaks, for example: `@everyone {streamer}\\n{title}\\n{url}`.',
       'Example: `@everyone {streamer} is playing {game}: {title} {url}`.',
+      '`/twitch-style show` - show this server notification style.',
+      '`/twitch-style set notification_mode:text` - text template only.',
+      '`/twitch-style set notification_mode:embed` - rich embed card only.',
+      '`/twitch-style set notification_mode:both` - two messages: text template and embed card.',
       '',
       '**Testing and Settings**',
       '`/twitch-test streamer:<login>` - send a test notification. If this channel has a subscription for the streamer, its custom template or the server template is used.',
@@ -168,11 +209,13 @@ let pollInProgress = false;
 
 client.once(Events.ClientReady, async (readyClient) => {
   await storage.load();
-  storage.setRuntimeStatus({ startedAt: new Date().toISOString() });
-  await storage.save();
   console.log(`Logged in as ${readyClient.user.tag}.`);
   console.log(`Polling Twitch every ${config.pollIntervalMs / 1000} seconds.`);
-  void pollTwitch();
+  if (config.skipInitialPoll) {
+    console.log('Initial Twitch poll skipped by SKIP_INITIAL_POLL.');
+  } else {
+    void pollTwitch();
+  }
   setInterval(() => void pollTwitch(), config.pollIntervalMs);
 });
 
@@ -186,6 +229,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await handleUnsubscribe(interaction);
     } else if (interaction.commandName === 'twitch-list') {
       await handleList(interaction);
+    } else if (interaction.commandName === 'twitch-edit') {
+      await handleEdit(interaction);
     } else if (interaction.commandName === 'twitch-help') {
       await handleHelp(interaction);
     } else if (interaction.commandName === 'twitch-language') {
@@ -196,6 +241,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await handleTest(interaction);
     } else if (interaction.commandName === 'twitch-message') {
       await handleMessage(interaction);
+    } else if (interaction.commandName === 'twitch-style') {
+      await handleStyle(interaction);
     }
   } catch (error) {
     console.error(error);
@@ -213,8 +260,8 @@ async function handleSubscribe(interaction) {
   await interaction.deferReply({ ephemeral: true });
 
   const login = normalizeLogin(interaction.options.getString('streamer', true));
-  const category = normalizeCategory(interaction.options.getString('category'));
-  const excludeCategory = normalizeCategory(interaction.options.getString('exclude_category'));
+  const category = normalizeCategories(interaction.options.getString('category'));
+  const excludeCategory = normalizeCategories(interaction.options.getString('exclude_category'));
   const lang = getInteractionLanguage(interaction);
   if (category && excludeCategory) {
     await interaction.editReply(t(lang, 'chooseOneFilter'));
@@ -280,13 +327,86 @@ async function handleList(interaction) {
     .map((subscription) => {
       const filter = formatFilterText(subscription, lang);
       const template = subscription.template ? t(lang, 'customTemplate') : '';
-      return `- ${subscription.twitchDisplayName || subscription.twitchLogin} -> <#${subscription.channelId}>${filter}${template}`;
+      const mode = subscription.notificationMode ? `, mode: ${subscription.notificationMode}` : '';
+      return `- ${subscription.twitchDisplayName || subscription.twitchLogin} -> <#${subscription.channelId}>${filter}${template}${mode}`;
     });
 
   await interaction.reply({
     content: lines.join('\n').slice(0, 1900),
     ephemeral: true
   });
+}
+
+async function handleEdit(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const lang = getInteractionLanguage(interaction);
+  const login = normalizeLogin(interaction.options.getString('streamer', true));
+  const channel = await resolveNotificationChannel(interaction);
+  assertNotificationChannel(channel);
+
+  const subscription = storage.findSubscription({
+    guildId: interaction.guildId,
+    channelId: channel.id,
+    twitchLogin: login
+  });
+
+  if (!subscription) {
+    await interaction.editReply(t(lang, 'subscriptionForTemplateMissing'));
+    return;
+  }
+
+  const category = normalizeCategories(interaction.options.getString('category'));
+  const excludeCategory = normalizeCategories(interaction.options.getString('exclude_category'));
+  const clearFilters = interaction.options.getBoolean('clear_filters') || false;
+  const template = interaction.options.getString('template');
+  const clearTemplate = interaction.options.getBoolean('clear_template') || false;
+  const notificationMode = interaction.options.getString('notification_mode');
+  const newChannel = interaction.options.getChannel('new_discord_channel');
+
+  if (category && excludeCategory) {
+    await interaction.editReply(t(lang, 'chooseOneFilter'));
+    return;
+  }
+
+  let changed = false;
+  if (clearFilters) {
+    subscription.category = null;
+    subscription.excludeCategory = null;
+    changed = true;
+  } else if (category || excludeCategory) {
+    subscription.category = category;
+    subscription.excludeCategory = excludeCategory;
+    changed = true;
+  }
+
+  if (template !== null) {
+    subscription.template = template;
+    changed = true;
+  } else if (clearTemplate) {
+    subscription.template = null;
+    changed = true;
+  }
+
+  if (notificationMode) {
+    subscription.notificationMode = notificationMode;
+    changed = true;
+  }
+
+  if (newChannel) {
+    assertNotificationChannel(newChannel);
+    subscription.channelId = newChannel.id;
+    changed = true;
+  }
+
+  if (!changed) {
+    await interaction.editReply(t(lang, 'editNoChanges'));
+    return;
+  }
+
+  await storage.save();
+  const filterText = formatFilterText(subscription, lang);
+  const modeText = subscription.notificationMode ? `, mode: ${subscription.notificationMode}` : '';
+  await interaction.editReply(`${t(lang, 'editUpdated')}: ${subscription.twitchDisplayName || subscription.twitchLogin} -> <#${subscription.channelId}>${filterText}${modeText}.`);
 }
 
 async function handleHelp(interaction) {
@@ -296,6 +416,29 @@ async function handleHelp(interaction) {
 
   for (const chunk of chunks.slice(1)) {
     await interaction.followUp({ content: chunk, ephemeral: true });
+  }
+}
+
+async function handleStyle(interaction) {
+  const guild = storage.getGuild(interaction.guildId);
+  const lang = getInteractionLanguage(interaction);
+  const subcommand = interaction.options.getSubcommand();
+
+  if (subcommand === 'show') {
+    await interaction.reply({
+      content: t(lang, 'styleCurrent')(guild.notificationMode || 'text'),
+      ephemeral: true
+    });
+    return;
+  }
+
+  if (subcommand === 'set') {
+    guild.notificationMode = interaction.options.getString('notification_mode', true);
+    await storage.save();
+    await interaction.reply({
+      content: t(lang, 'styleUpdated')(guild.notificationMode),
+      ephemeral: true
+    });
   }
 }
 
@@ -367,7 +510,8 @@ async function handleTest(interaction) {
     twitchLogin: user.login.toLowerCase()
   });
   const template = subscription?.template || guild.template || defaultTemplates[guild.language] || defaultTemplate;
-  const gameName = subscription?.category || t(lang, 'testCategory');
+  const notificationMode = subscription?.notificationMode || guild.notificationMode || 'text';
+  const gameName = firstCategory(subscription?.category) || t(lang, 'testCategory');
   const stream = {
     id: 'test-stream-id',
     user_login: user.login,
@@ -378,9 +522,16 @@ async function handleTest(interaction) {
     started_at: new Date().toISOString()
   };
 
-  await channel.send({
-    content: renderTemplate(template, stream, guild.language),
-    allowedMentions: { parse: allowPing ? ['everyone'] : [] }
+  await sendNotification({
+    channel,
+    subscription: {
+      twitchDisplayName: user.display_name,
+      template,
+      language: guild.language,
+      notificationMode
+    },
+    stream,
+    allowEveryone: allowPing
   });
 
   await interaction.reply({
@@ -440,11 +591,6 @@ async function pollTwitch() {
   pollInProgress = true;
 
   try {
-    storage.setRuntimeStatus({
-      lastPollStartedAt: new Date().toISOString(),
-      lastPollError: null
-    });
-
     const subscriptions = storage.allSubscriptions();
     const streamsByLogin = await twitch.getStreamsByLogins(
       subscriptions.map((subscription) => subscription.twitchLogin)
@@ -461,6 +607,9 @@ async function pollTwitch() {
       if (!stored) continue;
 
       if (!stream) {
+        if (stored.live) {
+          stored.lastEndedAt = new Date().toISOString();
+        }
         stored.live = false;
         continue;
       }
@@ -468,11 +617,15 @@ async function pollTwitch() {
       if (!matchesCategoryFilter(stored.category, stored.excludeCategory, stream.game_name)) {
         stored.live = true;
         stored.lastStreamId = stream.id;
+        stored.lastNotifiedCategory = null;
         stored.twitchDisplayName = stream.user_name;
         continue;
       }
 
-      if (stored.live && stored.lastStreamId === stream.id) {
+      if (!shouldSendNotification(stored, stream)) {
+        stored.live = true;
+        stored.lastStreamId = stream.id;
+        stored.twitchDisplayName = stream.user_name;
         continue;
       }
 
@@ -482,15 +635,13 @@ async function pollTwitch() {
         continue;
       }
 
-      const message = renderTemplate(subscription.template, stream, subscription.language);
-      await channel.send({
-        content: message,
-        allowedMentions: { parse: ['everyone'] }
-      });
+      await sendNotification({ channel, subscription, stream, allowEveryone: true });
 
       stored.live = true;
       stored.lastStreamId = stream.id;
       stored.twitchDisplayName = stream.user_name;
+      stored.lastNotifiedAt = new Date().toISOString();
+      stored.lastNotifiedCategory = normalizeForCompare(stream.game_name || '');
       storage.recordNotification({
         guildId: subscription.guildId,
         subscription: stored,
@@ -498,21 +649,91 @@ async function pollTwitch() {
       });
     }
 
-    storage.setRuntimeStatus({
-      lastPollSucceededAt: new Date().toISOString(),
-      lastPollError: null
-    });
     await storage.save();
   } catch (error) {
-    storage.setRuntimeStatus({
-      lastPollFailedAt: new Date().toISOString(),
-      lastPollError: error?.message || String(error)
-    });
-    await storage.save();
     console.error('Polling failed:', error);
   } finally {
     pollInProgress = false;
   }
+}
+
+async function sendNotification({ channel, subscription, stream, allowEveryone }) {
+  const mode = subscription.notificationMode || 'text';
+  const text = renderTemplate(subscription.template, stream, subscription.language);
+  const allowedMentions = getAllowedMentions(allowEveryone);
+
+  if (mode === 'text') {
+    await channel.send({ content: text, allowedMentions });
+    return;
+  }
+
+  const embed = buildStreamEmbed(stream, subscription.language);
+  if (mode === 'embed') {
+    await channel.send({
+      content: extractMentionPrefix(text),
+      embeds: [embed],
+      allowedMentions
+    });
+    return;
+  }
+
+  await channel.send({ content: text, allowedMentions });
+  await channel.send({ embeds: [embed], allowedMentions: getAllowedMentions(false) });
+}
+
+function getAllowedMentions(enabled) {
+  return { parse: enabled ? ['everyone', 'roles'] : [] };
+}
+
+function buildStreamEmbed(stream, language = defaultLanguage) {
+  const lang = normalizeLanguage(language);
+  const url = `https://www.twitch.tv/${stream.user_login}`;
+  const thumbnailUrl = stream.thumbnail_url
+    ? stream.thumbnail_url.replace('{width}', '1280').replace('{height}', '720')
+    : null;
+
+  const embed = new EmbedBuilder()
+    .setColor(0x9146ff)
+    .setAuthor({ name: stream.user_name, url })
+    .setTitle(stream.title || t(lang, 'noTitle'))
+    .setURL(url)
+    .addFields(
+      { name: t(lang, 'embedCategory'), value: stream.game_name || t(lang, 'noCategory'), inline: true },
+      { name: t(lang, 'embedViewers'), value: String(stream.viewer_count ?? 0), inline: true },
+      { name: t(lang, 'embedStartedAt'), value: stream.started_at || t(lang, 'never'), inline: false }
+    )
+    .setFooter({ text: t(lang, 'embedWatch') })
+    .setTimestamp(new Date());
+
+  if (thumbnailUrl) {
+    embed.setImage(`${thumbnailUrl}?t=${Date.now()}`);
+  }
+
+  return embed;
+}
+
+function extractMentionPrefix(text) {
+  const mentions = text.match(/(?:^|\s)(@everyone|@here)(?=\s|$)/g);
+  if (!mentions) return null;
+  return mentions.map((mention) => mention.trim()).join(' ');
+}
+
+function shouldSendNotification(subscription, stream) {
+  const category = normalizeForCompare(stream.game_name || '');
+  if (subscription.lastStreamId === stream.id && subscription.lastNotifiedCategory === category) {
+    return false;
+  }
+
+  if (
+    subscription.lastStreamId !== stream.id &&
+    subscription.lastEndedAt &&
+    subscription.lastNotifiedCategory === category &&
+    Date.now() - Date.parse(subscription.lastEndedAt) < RESTART_SUPPRESS_MS
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function renderTemplate(template, stream, language = defaultLanguage) {
@@ -528,31 +749,51 @@ function renderTemplate(template, stream, language = defaultLanguage) {
     channel: stream.user_login
   };
 
-  return Object.entries(values).reduce(
+  const rendered = Object.entries(values).reduce(
     (message, [key, value]) => message.replaceAll(`{${key}}`, value),
     template || defaultTemplate
   );
+
+  return rendered.replaceAll('\\n', '\n');
 }
 
 function normalizeLogin(login) {
   return login.trim().replace(/^https?:\/\/(www\.)?twitch\.tv\//i, '').replace(/^@/, '').split(/[/?#]/)[0].toLowerCase();
 }
 
-function normalizeCategory(category) {
-  if (!category) return null;
-  const normalized = category.trim().replace(/\s+/g, ' ');
-  return normalized || null;
+function normalizeCategories(categories) {
+  if (!categories) return null;
+  const normalized = categories
+    .split(',')
+    .map((category) => category.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+
+  return normalized.length ? normalized.join(', ') : null;
 }
 
 function matchesCategoryFilter(includeFilter, excludeFilter, gameName) {
   const normalizedGame = normalizeForCompare(gameName || '');
-  if (includeFilter && normalizeForCompare(includeFilter) !== normalizedGame) return false;
-  if (excludeFilter && normalizeForCompare(excludeFilter) === normalizedGame) return false;
+  const includeFilters = splitCategories(includeFilter).map(normalizeForCompare);
+  const excludeFilters = splitCategories(excludeFilter).map(normalizeForCompare);
+  if (includeFilters.length > 0 && !includeFilters.includes(normalizedGame)) return false;
+  if (excludeFilters.includes(normalizedGame)) return false;
   return true;
 }
 
 function normalizeForCompare(value) {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+function splitCategories(categories) {
+  if (!categories) return [];
+  return String(categories)
+    .split(',')
+    .map((category) => category.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+}
+
+function firstCategory(categories) {
+  return splitCategories(categories)[0] || null;
 }
 
 function formatFilterText({ category, excludeCategory }, language = defaultLanguage) {

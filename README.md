@@ -6,9 +6,15 @@
 
 - `/twitch-subscribe streamer:<логин>` - подписать текущий Discord-канал на Twitch-канал.
 - `/twitch-subscribe streamer:<логин> discord_channel:<канал>` - подписать выбранный канал.
-- `/twitch-subscribe streamer:<логин> category:<категория>` - получать уведомления только если стрим запущен в указанной категории.
-- `/twitch-subscribe streamer:<логин> exclude_category:<категория>` - получать уведомления по всем категориям, кроме указанной.
+- `/twitch-subscribe streamer:<логин> category:<категории>` - получать уведомления только если стрим запущен в одной из категорий через запятую.
+- `/twitch-subscribe streamer:<логин> exclude_category:<категории>` - получать уведомления по всем категориям, кроме указанных через запятую.
 - `/twitch-unsubscribe streamer:<логин>` - удалить подписку.
+- `/twitch-edit streamer:<логин>` - редактировать существующую подписку в текущем канале.
+- `/twitch-edit streamer:<логин> category:<категории>` - заменить список разрешенных категорий.
+- `/twitch-edit streamer:<логин> exclude_category:<категории>` - заменить список исключенных категорий.
+- `/twitch-edit streamer:<логин> clear_filters:true` - убрать фильтры категорий.
+- `/twitch-edit streamer:<логин> new_discord_channel:<канал>` - перенести подписку в другой канал.
+- `/twitch-edit streamer:<логин> notification_mode:<text|embed|both>` - задать стиль уведомления для подписки.
 - `/twitch-list` - показать подписки сервера.
 - `/twitch-help` - показать список команд.
 - `/twitch-message show` - показать шаблон уведомления.
@@ -22,11 +28,19 @@
 - `/twitch-stats` - показать мини-статистику уведомлений сервера.
 - `/twitch-test streamer:<логин>` - отправить тестовое уведомление в текущий канал.
 - `/twitch-test streamer:<логин> ping:true` - отправить тест с реальным `@everyone/@here`.
+- `/twitch-style show` - показать стиль уведомлений сервера.
+- `/twitch-style set notification_mode:<text|embed|both>` - выбрать стиль уведомлений.
 
 Поддерживаемые плейсхолдеры в шаблоне:
 
 ```text
 {streamer} {title} {game} {url} {viewers} {started_at} {channel}
+```
+
+Для переноса строки в slash-команде используйте `\n`:
+
+```text
+@everyone {streamer} вышел в эфир!\nНазвание: {title}\nКатегория: {game}\n{url}
 ```
 
 Пример:
@@ -38,10 +52,10 @@
 {url}
 ```
 
-Пример подписки только на Beat Saber:
+Пример подписки только на Beat Saber и Synth Riders:
 
 ```text
-/twitch-subscribe streamer:somechannel category:Beat Saber discord_channel:#streams
+/twitch-subscribe streamer:somechannel category:Beat Saber, Synth Riders discord_channel:#streams
 ```
 
 Если стример запустит Minecraft или другую категорию, уведомление по такой подписке отправлено не будет.
@@ -50,7 +64,7 @@
 
 ```text
 /twitch-subscribe streamer:somechannel category:Beat Saber discord_channel:#beat-saber
-/twitch-subscribe streamer:somechannel exclude_category:Beat Saber discord_channel:#other-streams
+/twitch-subscribe streamer:somechannel exclude_category:Beat Saber, Synth Riders discord_channel:#other-streams
 ```
 
 ## Шаблоны
@@ -83,6 +97,32 @@
 ## Статистика
 
 `/twitch-stats` показывает, сколько уведомлений бот отправил на сервере, топ стримеров и топ категорий. Статистика начинает копиться после версии с этой командой.
+
+## Стиль уведомлений
+
+По умолчанию бот отправляет обычный текстовый шаблон. Можно включить embed-карточку:
+
+```text
+/twitch-style set notification_mode:embed
+```
+
+Или два сообщения сразу: сначала текстовый шаблон, потом embed-карточка с названием стрима, категорией, зрителями и превью:
+
+```text
+/twitch-style set notification_mode:both
+```
+
+Для одной конкретной подписки:
+
+```text
+/twitch-edit streamer:somechannel notification_mode:both
+```
+
+## Защита от дублей
+
+Бот не отправляет одно и то же уведомление повторно после рестарта. Если стример завершил стрим и перезапустил его в той же категории в течение 10 минут, уведомление не отправится повторно.
+
+Если категория изменилась во время стрима или новый стрим запущен уже в другой категории, бот отправит новое уведомление в подходящие подписки.
 
 ## Тест уведомления
 

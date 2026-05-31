@@ -3,8 +3,7 @@ import { dirname } from 'node:path';
 import { defaultLanguage, defaultTemplate, defaultTemplates } from './commands.js';
 
 const emptyData = {
-  guilds: {},
-  runtime: createEmptyRuntime()
+  guilds: {}
 };
 
 export class JsonStorage {
@@ -35,21 +34,12 @@ export class JsonStorage {
     return this.writeQueue;
   }
 
-  setRuntimeStatus(patch) {
-    this.data.runtime ??= createEmptyRuntime();
-    Object.assign(this.data.runtime, patch);
-  }
-
-  getRuntimeStatus() {
-    this.data.runtime ??= createEmptyRuntime();
-    return this.data.runtime;
-  }
-
   getGuild(guildId) {
     if (!this.data.guilds[guildId]) {
       this.data.guilds[guildId] = {
         language: defaultLanguage,
         template: defaultTemplate,
+        notificationMode: 'text',
         subscriptions: [],
         stats: createEmptyStats()
       };
@@ -79,6 +69,7 @@ export class JsonStorage {
       existing.category = category;
       existing.excludeCategory = excludeCategory;
       existing.template ??= null;
+      existing.notificationMode ??= null;
       existing.notificationsSent ??= 0;
       return { created: false, subscription: existing };
     }
@@ -91,8 +82,12 @@ export class JsonStorage {
       category,
       excludeCategory,
       template: null,
+      notificationMode: null,
       notificationsSent: 0,
       lastStreamId: null,
+      lastEndedAt: null,
+      lastNotifiedAt: null,
+      lastNotifiedCategory: null,
       live: false,
       createdAt: new Date().toISOString()
     };
@@ -116,8 +111,10 @@ export class JsonStorage {
       guild.subscriptions.map((subscription) => ({
         guildId,
         language: guild.language,
+        guildNotificationMode: guild.notificationMode,
         ...subscription,
-        template: subscription.template || guild.template || defaultTemplates[guild.language] || defaultTemplate
+        template: subscription.template || guild.template || defaultTemplates[guild.language] || defaultTemplate,
+        notificationMode: subscription.notificationMode || guild.notificationMode || 'text'
       }))
     );
   }
@@ -149,22 +146,26 @@ export class JsonStorage {
 function normalize(raw) {
   const data = raw && typeof raw === 'object' ? raw : structuredClone(emptyData);
   if (!data.guilds || typeof data.guilds !== 'object') data.guilds = {};
-  data.runtime = normalizeRuntime(data.runtime);
 
   for (const guild of Object.values(data.guilds)) {
     guild.language = normalizeLanguage(guild.language);
     if (!guild.template) guild.template = defaultTemplates[guild.language] || defaultTemplate;
+    guild.notificationMode = normalizeNotificationMode(guild.notificationMode) || 'text';
     guild.stats = normalizeStats(guild.stats);
     if (!Array.isArray(guild.subscriptions)) guild.subscriptions = [];
     for (const subscription of guild.subscriptions) {
       subscription.twitchLogin = String(subscription.twitchLogin || '').toLowerCase();
-      subscription.category = normalizeCategory(subscription.category);
-      subscription.excludeCategory = normalizeCategory(subscription.excludeCategory);
+      subscription.category = normalizeCategories(subscription.category);
+      subscription.excludeCategory = normalizeCategories(subscription.excludeCategory);
       subscription.template = normalizeTemplate(subscription.template);
+      subscription.notificationMode = normalizeNotificationMode(subscription.notificationMode);
       subscription.notificationsSent = Number.isFinite(subscription.notificationsSent)
         ? subscription.notificationsSent
         : 0;
       subscription.lastStreamId ??= null;
+      subscription.lastEndedAt ??= null;
+      subscription.lastNotifiedAt ??= null;
+      subscription.lastNotifiedCategory ??= null;
       subscription.live ??= false;
     }
   }
@@ -172,10 +173,14 @@ function normalize(raw) {
   return data;
 }
 
-function normalizeCategory(category) {
-  if (!category) return null;
-  const normalized = String(category).trim().replace(/\s+/g, ' ');
-  return normalized || null;
+function normalizeCategories(categories) {
+  if (!categories) return null;
+  const items = Array.isArray(categories) ? categories : String(categories).split(',');
+  const normalized = items
+    .map((category) => String(category).trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+
+  return normalized.length ? normalized.join(', ') : null;
 }
 
 function normalizeTemplate(template) {
@@ -188,22 +193,16 @@ function normalizeLanguage(language) {
   return language === 'en' ? 'en' : defaultLanguage;
 }
 
+function normalizeNotificationMode(mode) {
+  return ['text', 'embed', 'both'].includes(mode) ? mode : null;
+}
+
 function normalizeStats(stats) {
   return {
     totalNotifications: Number.isFinite(stats?.totalNotifications) ? stats.totalNotifications : 0,
     byStreamer: stats?.byStreamer && typeof stats.byStreamer === 'object' ? stats.byStreamer : {},
     byCategory: stats?.byCategory && typeof stats.byCategory === 'object' ? stats.byCategory : {},
     lastNotificationAt: stats?.lastNotificationAt || null
-  };
-}
-
-function normalizeRuntime(runtime) {
-  return {
-    startedAt: runtime?.startedAt || null,
-    lastPollStartedAt: runtime?.lastPollStartedAt || null,
-    lastPollSucceededAt: runtime?.lastPollSucceededAt || null,
-    lastPollFailedAt: runtime?.lastPollFailedAt || null,
-    lastPollError: runtime?.lastPollError || null
   };
 }
 
@@ -215,14 +214,3 @@ function createEmptyStats() {
     lastNotificationAt: null
   };
 }
-
-function createEmptyRuntime() {
-  return {
-    startedAt: null,
-    lastPollStartedAt: null,
-    lastPollSucceededAt: null,
-    lastPollFailedAt: null,
-    lastPollError: null
-  };
-}
-

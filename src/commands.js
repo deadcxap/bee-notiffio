@@ -18,15 +18,15 @@ export const commands = [
     .addStringOption((option) =>
       option
         .setName('category')
-        .setDescription('Уведомлять только по этой категории, например: Beat Saber')
-        .setMaxLength(100)
+        .setDescription('Уведомлять только по этим категориям через запятую, например: Beat Saber, Synth Riders')
+        .setMaxLength(300)
         .setRequired(false)
     )
     .addStringOption((option) =>
       option
         .setName('exclude_category')
-        .setDescription('Не уведомлять по этой категории, например: Beat Saber')
-        .setMaxLength(100)
+        .setDescription('Не уведомлять по этим категориям через запятую, например: Beat Saber, Synth Riders')
+        .setMaxLength(300)
         .setRequired(false)
     )
     .addChannelOption((option) =>
@@ -57,6 +57,99 @@ export const commands = [
     .setName('twitch-list')
     .setDescription('Показать Twitch-подписки этого сервера.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+  new SlashCommandBuilder()
+    .setName('twitch-edit')
+    .setDescription('Редактировать существующую Twitch-подписку.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addStringOption((option) =>
+      option
+        .setName('streamer')
+        .setDescription('Логин Twitch существующей подписки.')
+        .setRequired(true)
+    )
+    .addChannelOption((option) =>
+      option
+        .setName('discord_channel')
+        .setDescription('Канал, где находится подписка. По умолчанию текущий.')
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+        .setRequired(false)
+    )
+    .addChannelOption((option) =>
+      option
+        .setName('new_discord_channel')
+        .setDescription('Перенести подписку в другой канал.')
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+        .setRequired(false)
+    )
+    .addStringOption((option) =>
+      option
+        .setName('category')
+        .setDescription('Новый список разрешенных категорий через запятую.')
+        .setMaxLength(300)
+        .setRequired(false)
+    )
+    .addStringOption((option) =>
+      option
+        .setName('exclude_category')
+        .setDescription('Новый список исключенных категорий через запятую.')
+        .setMaxLength(300)
+        .setRequired(false)
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName('clear_filters')
+        .setDescription('Очистить category и exclude_category.')
+        .setRequired(false)
+    )
+    .addStringOption((option) =>
+      option
+        .setName('template')
+        .setDescription('Новый личный шаблон этой подписки.')
+        .setMaxLength(1800)
+        .setRequired(false)
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName('clear_template')
+        .setDescription('Удалить личный шаблон подписки.')
+        .setRequired(false)
+    )
+    .addStringOption((option) =>
+      option
+        .setName('notification_mode')
+        .setDescription('Как отправлять уведомление.')
+        .addChoices(
+          { name: 'text', value: 'text' },
+          { name: 'embed', value: 'embed' },
+          { name: 'both', value: 'both' }
+        )
+        .setRequired(false)
+    ),
+  new SlashCommandBuilder()
+    .setName('twitch-style')
+    .setDescription('Настроить стиль уведомлений сервера.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('show')
+        .setDescription('Показать текущий стиль уведомлений.')
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('set')
+        .setDescription('Выбрать стиль уведомлений.')
+        .addStringOption((option) =>
+          option
+            .setName('notification_mode')
+            .setDescription('text - старый режим, embed - карточка, both - текст + карточка.')
+            .addChoices(
+              { name: 'text', value: 'text' },
+              { name: 'embed', value: 'embed' },
+              { name: 'both', value: 'both' }
+            )
+            .setRequired(true)
+        )
+    ),
   new SlashCommandBuilder()
     .setName('twitch-help')
     .setDescription('Показать список команд Twitch-уведомлений.'),
