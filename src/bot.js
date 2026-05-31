@@ -1,4 +1,7 @@
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   Client,
   EmbedBuilder,
   Events,
@@ -34,9 +37,10 @@ const messages = {
     editUpdated: 'Подписка обновлена.',
     styleCurrent: (mode) => `Текущий стиль уведомлений: ${mode}.`,
     styleUpdated: (mode) => `Стиль уведомлений обновлен: ${mode}.`,
+    categoryChangesCurrent: (enabled) => `Уведомления при смене категории: ${enabled ? 'включены' : 'выключены'}.`,
+    categoryChangesUpdated: (enabled) => `Уведомления при смене категории ${enabled ? 'включены' : 'выключены'}.`,
     embedCategory: 'Категория',
     embedViewers: 'Зрители',
-    embedStartedAt: 'Начало',
     embedWatch: 'Смотреть на Twitch',
     languageCurrent: (language) => `Текущий язык: ${language}.`,
     languageUpdated: (language) => `Язык сервера обновлен: ${language}.`,
@@ -76,6 +80,7 @@ const messages = {
       '`/twitch-edit streamer:<логин> clear_filters:true` - убрать все фильтры категорий.',
       '`/twitch-edit streamer:<логин> new_discord_channel:#канал` - перенести подписку в другой канал.',
       '`/twitch-edit streamer:<логин> notification_mode:<text|embed|both>` - задать стиль только для этой подписки.',
+      '`/twitch-edit streamer:<логин> notify_category_changes:false` - отключить уведомления при смене категории только для этой подписки.',
       '`/twitch-list` - показать все подписки сервера, их каналы, фильтры категорий и наличие личного шаблона.',
       '',
       '**Кастомизация уведомлений**',
@@ -93,6 +98,7 @@ const messages = {
       '`/twitch-style set notification_mode:text` - только текстовый шаблон.',
       '`/twitch-style set notification_mode:embed` - только красивая embed-карточка.',
       '`/twitch-style set notification_mode:both` - два сообщения: текстовый шаблон и embed-карточка.',
+      '`/twitch-style category_changes enabled:false` - отключить уведомления при смене категории на сервере.',
       '',
       '**Тест и настройки**',
       '`/twitch-test streamer:<логин>` - отправить тестовое уведомление. Если в этом канале есть подписка на стримера, будет использован ее личный шаблон или серверный шаблон.',
@@ -124,9 +130,10 @@ const messages = {
     editUpdated: 'Subscription updated.',
     styleCurrent: (mode) => `Current notification style: ${mode}.`,
     styleUpdated: (mode) => `Notification style updated: ${mode}.`,
+    categoryChangesCurrent: (enabled) => `Category change notifications: ${enabled ? 'enabled' : 'disabled'}.`,
+    categoryChangesUpdated: (enabled) => `Category change notifications ${enabled ? 'enabled' : 'disabled'}.`,
     embedCategory: 'Category',
     embedViewers: 'Viewers',
-    embedStartedAt: 'Started',
     embedWatch: 'Watch on Twitch',
     languageCurrent: (language) => `Current language: ${language}.`,
     languageUpdated: (language) => `Server language updated: ${language}.`,
@@ -166,6 +173,7 @@ const messages = {
       '`/twitch-edit streamer:<login> clear_filters:true` - remove category filters.',
       '`/twitch-edit streamer:<login> new_discord_channel:#channel` - move the subscription to another channel.',
       '`/twitch-edit streamer:<login> notification_mode:<text|embed|both>` - set style only for this subscription.',
+      '`/twitch-edit streamer:<login> notify_category_changes:false` - disable category-change notifications only for this subscription.',
       '`/twitch-list` - show server subscriptions, channels, category filters, and whether a custom template is set.',
       '',
       '**Notification Customization**',
@@ -183,6 +191,7 @@ const messages = {
       '`/twitch-style set notification_mode:text` - text template only.',
       '`/twitch-style set notification_mode:embed` - rich embed card only.',
       '`/twitch-style set notification_mode:both` - two messages: text template and embed card.',
+      '`/twitch-style category_changes enabled:false` - disable category-change notifications on this server.',
       '',
       '**Testing and Settings**',
       '`/twitch-test streamer:<login>` - send a test notification. If this channel has a subscription for the streamer, its custom template or the server template is used.',
@@ -361,6 +370,7 @@ async function handleEdit(interaction) {
   const template = interaction.options.getString('template');
   const clearTemplate = interaction.options.getBoolean('clear_template') || false;
   const notificationMode = interaction.options.getString('notification_mode');
+  const notifyCategoryChanges = interaction.options.getBoolean('notify_category_changes');
   const newChannel = interaction.options.getChannel('new_discord_channel');
 
   if (category && excludeCategory) {
@@ -389,6 +399,11 @@ async function handleEdit(interaction) {
 
   if (notificationMode) {
     subscription.notificationMode = notificationMode;
+    changed = true;
+  }
+
+  if (notifyCategoryChanges !== null) {
+    subscription.notifyCategoryChanges = notifyCategoryChanges;
     changed = true;
   }
 
@@ -426,7 +441,10 @@ async function handleStyle(interaction) {
 
   if (subcommand === 'show') {
     await interaction.reply({
-      content: t(lang, 'styleCurrent')(guild.notificationMode || 'text'),
+      content: [
+        t(lang, 'styleCurrent')(guild.notificationMode || 'text'),
+        t(lang, 'categoryChangesCurrent')(guild.notifyCategoryChanges ?? true)
+      ].join('\n'),
       ephemeral: true
     });
     return;
@@ -437,6 +455,16 @@ async function handleStyle(interaction) {
     await storage.save();
     await interaction.reply({
       content: t(lang, 'styleUpdated')(guild.notificationMode),
+      ephemeral: true
+    });
+    return;
+  }
+
+  if (subcommand === 'category_changes') {
+    guild.notifyCategoryChanges = interaction.options.getBoolean('enabled', true);
+    await storage.save();
+    await interaction.reply({
+      content: t(lang, 'categoryChangesUpdated')(guild.notifyCategoryChanges),
       ephemeral: true
     });
   }
@@ -622,7 +650,7 @@ async function pollTwitch() {
         continue;
       }
 
-      if (!shouldSendNotification(stored, stream)) {
+      if (!shouldSendNotification(stored, stream, subscription.notifyCategoryChanges)) {
         stored.live = true;
         stored.lastStreamId = stream.id;
         stored.twitchDisplayName = stream.user_name;
@@ -668,17 +696,19 @@ async function sendNotification({ channel, subscription, stream, allowEveryone }
   }
 
   const embed = buildStreamEmbed(stream, subscription.language);
+  const components = [buildWatchButton(stream, subscription.language)];
   if (mode === 'embed') {
     await channel.send({
       content: extractMentionPrefix(text),
       embeds: [embed],
+      components,
       allowedMentions
     });
     return;
   }
 
   await channel.send({ content: text, allowedMentions });
-  await channel.send({ embeds: [embed], allowedMentions: getAllowedMentions(false) });
+  await channel.send({ embeds: [embed], components, allowedMentions: getAllowedMentions(false) });
 }
 
 function getAllowedMentions(enabled) {
@@ -694,15 +724,13 @@ function buildStreamEmbed(stream, language = defaultLanguage) {
 
   const embed = new EmbedBuilder()
     .setColor(0x9146ff)
-    .setAuthor({ name: stream.user_name, url })
-    .setTitle(stream.title || t(lang, 'noTitle'))
+    .setTitle(`${stream.user_name} ${lang === 'ru' ? 'в эфире' : 'is live'}`)
     .setURL(url)
+    .setDescription(`**[${stream.title || t(lang, 'noTitle')}](${url})**`)
     .addFields(
       { name: t(lang, 'embedCategory'), value: stream.game_name || t(lang, 'noCategory'), inline: true },
-      { name: t(lang, 'embedViewers'), value: String(stream.viewer_count ?? 0), inline: true },
-      { name: t(lang, 'embedStartedAt'), value: stream.started_at || t(lang, 'never'), inline: false }
+      { name: t(lang, 'embedViewers'), value: String(stream.viewer_count ?? 0), inline: true }
     )
-    .setFooter({ text: t(lang, 'embedWatch') })
     .setTimestamp(new Date());
 
   if (thumbnailUrl) {
@@ -712,14 +740,33 @@ function buildStreamEmbed(stream, language = defaultLanguage) {
   return embed;
 }
 
+function buildWatchButton(stream, language = defaultLanguage) {
+  const lang = normalizeLanguage(language);
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel(t(lang, 'embedWatch'))
+      .setStyle(ButtonStyle.Link)
+      .setURL(`https://www.twitch.tv/${stream.user_login}`)
+  );
+}
+
 function extractMentionPrefix(text) {
-  const mentions = text.match(/(?:^|\s)(@everyone|@here)(?=\s|$)/g);
+  const mentions = text.match(/(?:^|\s)(@everyone|@here|<@&\d+>)(?=\s|$)/g);
   if (!mentions) return null;
   return mentions.map((mention) => mention.trim()).join(' ');
 }
 
-function shouldSendNotification(subscription, stream) {
+function shouldSendNotification(subscription, stream, notifyCategoryChanges = true) {
   const category = normalizeForCompare(stream.game_name || '');
+  if (
+    subscription.lastStreamId === stream.id &&
+    subscription.lastNotifiedCategory &&
+    subscription.lastNotifiedCategory !== category &&
+    !notifyCategoryChanges
+  ) {
+    return false;
+  }
+
   if (subscription.lastStreamId === stream.id && subscription.lastNotifiedCategory === category) {
     return false;
   }

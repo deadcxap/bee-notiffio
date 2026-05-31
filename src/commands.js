@@ -124,6 +124,12 @@ export const commands = [
           { name: 'both', value: 'both' }
         )
         .setRequired(false)
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName('notify_category_changes')
+        .setDescription('Присылать уведомления, если стример сменил категорию во время стрима.')
+        .setRequired(false)
     ),
   new SlashCommandBuilder()
     .setName('twitch-style')
@@ -147,6 +153,17 @@ export const commands = [
               { name: 'embed', value: 'embed' },
               { name: 'both', value: 'both' }
             )
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('category_changes')
+        .setDescription('Включить или выключить уведомления при смене категории.')
+        .addBooleanOption((option) =>
+          option
+            .setName('enabled')
+            .setDescription('true - уведомлять при смене категории, false - не уведомлять.')
             .setRequired(true)
         )
     ),

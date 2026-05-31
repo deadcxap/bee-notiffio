@@ -40,6 +40,7 @@ export class JsonStorage {
         language: defaultLanguage,
         template: defaultTemplate,
         notificationMode: 'text',
+        notifyCategoryChanges: true,
         subscriptions: [],
         stats: createEmptyStats()
       };
@@ -70,6 +71,7 @@ export class JsonStorage {
       existing.excludeCategory = excludeCategory;
       existing.template ??= null;
       existing.notificationMode ??= null;
+      existing.notifyCategoryChanges ??= null;
       existing.notificationsSent ??= 0;
       return { created: false, subscription: existing };
     }
@@ -83,6 +85,7 @@ export class JsonStorage {
       excludeCategory,
       template: null,
       notificationMode: null,
+      notifyCategoryChanges: null,
       notificationsSent: 0,
       lastStreamId: null,
       lastEndedAt: null,
@@ -112,9 +115,11 @@ export class JsonStorage {
         guildId,
         language: guild.language,
         guildNotificationMode: guild.notificationMode,
+        guildNotifyCategoryChanges: guild.notifyCategoryChanges,
         ...subscription,
         template: subscription.template || guild.template || defaultTemplates[guild.language] || defaultTemplate,
-        notificationMode: subscription.notificationMode || guild.notificationMode || 'text'
+        notificationMode: subscription.notificationMode || guild.notificationMode || 'text',
+        notifyCategoryChanges: subscription.notifyCategoryChanges ?? guild.notifyCategoryChanges ?? true
       }))
     );
   }
@@ -151,6 +156,9 @@ function normalize(raw) {
     guild.language = normalizeLanguage(guild.language);
     if (!guild.template) guild.template = defaultTemplates[guild.language] || defaultTemplate;
     guild.notificationMode = normalizeNotificationMode(guild.notificationMode) || 'text';
+    guild.notifyCategoryChanges = typeof guild.notifyCategoryChanges === 'boolean'
+      ? guild.notifyCategoryChanges
+      : true;
     guild.stats = normalizeStats(guild.stats);
     if (!Array.isArray(guild.subscriptions)) guild.subscriptions = [];
     for (const subscription of guild.subscriptions) {
@@ -159,6 +167,9 @@ function normalize(raw) {
       subscription.excludeCategory = normalizeCategories(subscription.excludeCategory);
       subscription.template = normalizeTemplate(subscription.template);
       subscription.notificationMode = normalizeNotificationMode(subscription.notificationMode);
+      subscription.notifyCategoryChanges = typeof subscription.notifyCategoryChanges === 'boolean'
+        ? subscription.notifyCategoryChanges
+        : null;
       subscription.notificationsSent = Number.isFinite(subscription.notificationsSent)
         ? subscription.notificationsSent
         : 0;

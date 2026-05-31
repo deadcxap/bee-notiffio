@@ -15,6 +15,7 @@
 - `/twitch-edit streamer:<логин> clear_filters:true` - убрать фильтры категорий.
 - `/twitch-edit streamer:<логин> new_discord_channel:<канал>` - перенести подписку в другой канал.
 - `/twitch-edit streamer:<логин> notification_mode:<text|embed|both>` - задать стиль уведомления для подписки.
+- `/twitch-edit streamer:<логин> notify_category_changes:false` - отключить уведомления при смене категории для подписки.
 - `/twitch-list` - показать подписки сервера.
 - `/twitch-help` - показать список команд.
 - `/twitch-message show` - показать шаблон уведомления.
@@ -30,6 +31,7 @@
 - `/twitch-test streamer:<логин> ping:true` - отправить тест с реальным `@everyone/@here`.
 - `/twitch-style show` - показать стиль уведомлений сервера.
 - `/twitch-style set notification_mode:<text|embed|both>` - выбрать стиль уведомлений.
+- `/twitch-style category_changes enabled:false` - отключить уведомления при смене категории на сервере.
 
 Поддерживаемые плейсхолдеры в шаблоне:
 
@@ -116,6 +118,20 @@
 
 ```text
 /twitch-edit streamer:somechannel notification_mode:both
+```
+
+Embed-карточка показывает стримера крупным заголовком, кликабельное название стрима, категорию, зрителей, превью и кнопку `Смотреть на Twitch`.
+
+Уведомления при смене категории можно отключить на весь сервер:
+
+```text
+/twitch-style category_changes enabled:false
+```
+
+Или только на одну подписку:
+
+```text
+/twitch-edit streamer:somechannel notify_category_changes:false
 ```
 
 ## Защита от дублей
