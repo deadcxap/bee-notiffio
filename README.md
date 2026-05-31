@@ -167,6 +167,64 @@ npm run deploy-commands
 npm start
 ```
 
+## Запуск в Docker
+
+1. Создайте `.env` на основе `.env.example`.
+2. Соберите и запустите контейнер:
+
+```bash
+docker compose up -d --build
+```
+
+3. Зарегистрируйте slash-команды (один раз после первого запуска или при изменении команд):
+
+```bash
+docker compose run --rm notiffio npm run deploy-commands
+```
+
+4. Просмотр логов:
+
+```bash
+docker compose logs -f notiffio
+```
+
+`docker-compose.yml` монтирует локальную папку `./data` в контейнер (`/app/data`), поэтому подписки и статистика сохраняются между перезапусками.
+
+## Мониторинг и healthcheck контейнера
+
+Сервис теперь публикует runtime-статус в `data/bot-data.json` (поля `runtime.lastPollStartedAt`, `runtime.lastPollSucceededAt`, `runtime.lastPollFailedAt`, `runtime.lastPollError`).
+
+В Docker-образ добавлен `HEALTHCHECK`, который проверяет:
+- что был хотя бы один успешный polling Twitch;
+- что с момента последнего успешного polling прошло не больше порога `HEALTHCHECK_MAX_POLL_LAG_SECONDS`;
+- что последняя попытка polling не завершилась ошибкой после последнего успеха.
+
+Проверка статуса:
+
+```bash
+docker inspect --format='{{.State.Health.Status}}' notiffio
+docker inspect --format='{{json .State.Health.Log}}' notiffio | jq
+```
+
+По умолчанию в compose установлен порог `HEALTHCHECK_MAX_POLL_LAG_SECONDS=240` (4 минуты).
+
+## CI/CD контейнера (GitHub Actions)
+
+В репозитории добавлен workflow `.github/workflows/docker-image.yml`, который:
+
+- собирает multi-arch образ (`linux/amd64`, `linux/arm64`);
+- публикует образ в GitHub Container Registry: `ghcr.io/<owner>/bee-notiffio`;
+- на push в ветки обновляет branch-теги и тег `dev` для default-ветки;
+- на PR собирает и (для PR из этого же репозитория) публикует `pr-<номер>` теги;
+- на push тега формата `vX.Y.Z` публикует версии (`X.Y.Z`, `X.Y`, `X`) и `latest`.
+
+Пример запуска из GHCR:
+
+```bash
+docker run -d   --name notiffio   --restart unless-stopped   --env-file .env   -v $(pwd)/data:/app/data   ghcr.io/<owner>/bee-notiffio:latest
+```
+
+
 ## Как это работает
 
 Бот регулярно опрашивает Twitch `Get Streams` по всем подписанным логинам. Если канал стал live и этот stream id еще не был отправлен, бот пишет уведомление в подписанный Discord-канал. Когда стрим заканчивается, состояние сбрасывается, и следующий запуск стрима снова отправит уведомление.
