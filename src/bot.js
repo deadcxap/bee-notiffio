@@ -216,11 +216,23 @@ const twitch = new TwitchApi({
 
 let pollInProgress = false;
 
+await storage.load();
+storage.data.runtime = {
+  startedAt: new Date().toISOString(),
+  firstPollDueAt: null,
+  lastPollStartedAt: null,
+  lastPollSucceededAt: null,
+  lastPollFailedAt: null,
+  lastPollError: null
+};
+await storage.save();
+
 client.once(Events.ClientReady, async (readyClient) => {
-  await storage.load();
   console.log(`Logged in as ${readyClient.user.tag}.`);
   console.log(`Polling Twitch every ${config.pollIntervalMs / 1000} seconds.`);
   if (config.skipInitialPoll) {
+    storage.data.runtime.firstPollDueAt = new Date(Date.now() + config.pollIntervalMs).toISOString();
+    await storage.save();
     console.log('Initial Twitch poll skipped by SKIP_INITIAL_POLL.');
   } else {
     void pollTwitch();
@@ -619,6 +631,8 @@ async function pollTwitch() {
   pollInProgress = true;
 
   try {
+    storage.data.runtime.lastPollStartedAt = new Date().toISOString();
+    await storage.save();
     const subscriptions = storage.allSubscriptions();
     const streamsByLogin = await twitch.getStreamsByLogins(
       subscriptions.map((subscription) => subscription.twitchLogin)
@@ -677,8 +691,14 @@ async function pollTwitch() {
       });
     }
 
+    storage.data.runtime.lastPollSucceededAt = new Date().toISOString();
+    storage.data.runtime.lastPollFailedAt = null;
+    storage.data.runtime.lastPollError = null;
     await storage.save();
   } catch (error) {
+    storage.data.runtime.lastPollFailedAt = new Date().toISOString();
+    storage.data.runtime.lastPollError = error.message || String(error);
+    await storage.save().catch((saveError) => console.error('Cannot save polling status:', saveError));
     console.error('Polling failed:', error);
   } finally {
     pollInProgress = false;

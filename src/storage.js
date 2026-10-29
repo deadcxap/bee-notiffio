@@ -25,13 +25,15 @@ export class JsonStorage {
   }
 
   async save() {
-    this.writeQueue = this.writeQueue.then(async () => {
+    // A failed write must reach its caller without preventing all future saves.
+    const write = this.writeQueue.then(async () => {
       await mkdir(dirname(this.filePath), { recursive: true });
       const tempPath = `${this.filePath}.tmp`;
       await writeFile(tempPath, `${JSON.stringify(this.data, null, 2)}\n`, 'utf8');
       await rename(tempPath, this.filePath);
     });
-    return this.writeQueue;
+    this.writeQueue = write.catch(() => {});
+    return write;
   }
 
   getGuild(guildId) {

@@ -158,14 +158,14 @@ Embed-карточка показывает стримера крупным за
 
 ## Быстрый запуск
 
-1. Установите Node.js 20 или новее.
+1. Установите Node.js 22 LTS или новее. Совместимость с Node.js 20 сохранена, но эта версия уже не получает обновлений безопасности.
 2. Создайте Discord-приложение и бота в Discord Developer Portal.
 3. Пригласите бота на сервер со scopes `bot` и `applications.commands`; из прав минимум нужны `Send Messages` и `View Channels`.
 4. Создайте Twitch-приложение в Twitch Developer Console и получите `Client ID` и `Client Secret`.
 5. Установите зависимости:
 
 ```bash
-npm install
+npm ci
 ```
 
 6. Создайте `.env` на основе `.env.example`.
@@ -186,10 +186,11 @@ npm start
 ## Запуск в Docker
 
 1. Создайте `.env` на основе `.env.example`.
-2. Соберите и запустите контейнер:
+2. Загрузите и запустите контейнер версии 1.2.2:
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 3. Зарегистрируйте slash-команды (один раз после первого запуска или при изменении команд):
@@ -206,14 +207,29 @@ docker compose logs -f notiffio
 
 `docker-compose.yml` монтирует локальную папку `./data` в контейнер (`/app/data`), поэтому подписки и статистика сохраняются между перезапусками.
 
+## Обновление до 1.2.2
+
+Сохраните существующие `.env`, папку данных и настройки volumes. Перед обновлением сделайте резервную копию `data/bot-data.json`. В своём compose-файле измените только образ на `ghcr.io/deadcxap/bee-notiffio:1.2.2`, затем выполните:
+
+```bash
+docker compose pull notiffio
+docker compose up -d notiffio
+```
+
+Миграция данных и повторная регистрация slash-команд не нужны. Подписки, фильтры категорий, личные и серверные шаблоны, язык, стиль, статистика и защита от повторных уведомлений сохраняются. Новый блок `runtime` содержит только состояние мониторинга; версия 1.2.1 его игнорирует, поэтому можно вернуть прежний тег образа без преобразования файла данных.
+
+В старых compose-файлах встречается явный `HEALTHCHECK_MAX_POLL_LAG_SECONDS: 240`. Он продолжает работать и имеет приоритет над `.env`. Если увеличиваете интервал опроса, увеличьте этот порог или уберите его из compose, чтобы использовался автоматический расчёт. Старые теги образов, включая `1.0`, остаются закреплены за прежними выпусками.
+
 ## Мониторинг и healthcheck контейнера
 
-Сервис теперь публикует runtime-статус в `data/bot-data.json` (поля `runtime.lastPollStartedAt`, `runtime.lastPollSucceededAt`, `runtime.lastPollFailedAt`, `runtime.lastPollError`).
+Бот записывает runtime-статус в свой `DATA_FILE` (по умолчанию `data/bot-data.json`): `runtime.startedAt`, `runtime.firstPollDueAt`, `runtime.lastPollStartedAt`, `runtime.lastPollSucceededAt`, `runtime.lastPollFailedAt`, `runtime.lastPollError`. Статус сбрасывается при запуске, чтобы успех предыдущего процесса не скрывал проблему нового.
 
 В Docker-образ добавлен `HEALTHCHECK`, который проверяет:
 - что был хотя бы один успешный polling Twitch;
 - что с момента последнего успешного polling прошло не больше порога `HEALTHCHECK_MAX_POLL_LAG_SECONDS`;
 - что последняя попытка polling не завершилась ошибкой после последнего успеха.
+
+Цикл без подписок тоже считается успешным. При ошибке Twitch, отправки уведомления или сохранения данных бот записывает ошибку, а следующий успешный цикл очищает её. При `SKIP_INITIAL_POLL=true` проверка допускает ожидание первого запланированного опроса после подключения к Discord.
 
 Проверка статуса:
 
@@ -222,17 +238,20 @@ docker inspect --format='{{.State.Health.Status}}' notiffio
 docker inspect --format='{{json .State.Health.Log}}' notiffio | jq
 ```
 
-По умолчанию в compose установлен порог `HEALTHCHECK_MAX_POLL_LAG_SECONDS=240` (4 минуты).
+По умолчанию порог равен `max(180, POLL_INTERVAL_SECONDS * 3)` секунд. Его можно переопределить через `HEALTHCHECK_MAX_POLL_LAG_SECONDS` в `.env` или environment контейнера; значение должно быть положительным конечным числом.
+
+При запуске без Docker доступна та же проверка: `npm run healthcheck`. Она читает `.env` и тот же `DATA_FILE`, что и бот. Docker помечает контейнер как `unhealthy` после трёх неудачных проверок; сам по себе этот статус не перезапускает контейнер через `restart: unless-stopped`.
 
 ## CI/CD контейнера (GitHub Actions)
 
 В репозитории добавлен workflow `.github/workflows/docker-image.yml`, который:
 
 - собирает multi-arch образ (`linux/amd64`, `linux/arm64`);
+- перед сборкой запускает тесты на Node.js 20 и 22;
 - публикует образ в GitHub Container Registry: `ghcr.io/<owner>/bee-notiffio`;
 - на push в ветки обновляет branch-теги и тег `dev` для default-ветки;
 - на PR собирает и (для PR из этого же репозитория) публикует `pr-<номер>` теги;
-- на push тега формата `vX.Y.Z` публикует версии (`X.Y.Z`, `X.Y`, `X`) и `latest`.
+- на push тега формата `vX.Y.Z` публикует версии (`X.Y.Z`, `X.Y`) и `latest`.
 
 Пример запуска из GHCR:
 
