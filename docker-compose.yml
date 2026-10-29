@@ -2,11 +2,9 @@ services:
   notiffio:
     container_name: notiffio
     hostname: notiffio
-    image: ghcr.io/deadcxap/bee-notiffio:1.0
+    image: ghcr.io/deadcxap/bee-notiffio:1.2.2
     restart: unless-stopped
     env_file:
       - .env
-    environment:
-      HEALTHCHECK_MAX_POLL_LAG_SECONDS: 240
     volumes:
       - ./data:/app/data

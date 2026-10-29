@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { getDataFile, getPollIntervalSeconds } from './runtime-config.js';
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -6,16 +7,6 @@ function requireEnv(name) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value.trim();
-}
-
-function numberEnv(name, fallback) {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(`${name} must be a positive number`);
-  }
-  return parsed;
 }
 
 function booleanEnv(name, fallback = false) {
@@ -30,7 +21,7 @@ export const config = {
   discordGuildId: process.env.DISCORD_GUILD_ID?.trim() || null,
   twitchClientId: requireEnv('TWITCH_CLIENT_ID'),
   twitchClientSecret: requireEnv('TWITCH_CLIENT_SECRET'),
-  pollIntervalMs: numberEnv('POLL_INTERVAL_SECONDS', 60) * 1000,
+  pollIntervalMs: getPollIntervalSeconds() * 1000,
   skipInitialPoll: booleanEnv('SKIP_INITIAL_POLL'),
-  dataFile: process.env.DATA_FILE?.trim() || './data/bot-data.json'
+  dataFile: getDataFile()
 };
